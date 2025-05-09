@@ -1,4 +1,4 @@
-# Proto From-To
+# Proto_From_To
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
