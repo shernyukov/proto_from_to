@@ -1,20 +1,23 @@
 #!/usr/bin/env -S perl -ws
 #
-# proto_from_to, 2025-05-10, Version 2.0.4
+my $version = 'v2.1.2, 2025-05-15';
+# proto_from_to 
 # The simple script to synchronize identical folders between hosts.
 # Author: Andrey Shernyukov
+# andreysh@nioch.nsc.ru
 #
 # TODO:
-#  [] Optimizing ssh calls
+#  [] use strict;
 #  [] use Getopt::
 #  [] allow direction "from" with args
-# 
 #
 
 use Cwd;
 use Cwd 'realpath';
 use File::Basename;
 use Term::ANSIColor qw(:constants);
+use Data::Dump 'pp';
+use Text::ParseWords 'shellwords';
 
 ########################################################################
 #                      Script settings                                       
@@ -23,11 +26,17 @@ use Term::ANSIColor qw(:constants);
 # rsync executable and default rsync options
 my $rsync_x = '/usr/bin/rsync';
 die RED, "\nError: ", RESET, "No $rsync_x executable\n\n" unless -x $rsync_x;
-my $rsync_opt='-avh'; 
 
-our ($h,$help,$u,$debug,$y,$yes,$r,$recursive,$nocolor,$print_config);
+our ($h,$help,$u,$debug,$y,$yes,$r,$recursive,$nocolor,$print_config, $rsync_opt, $v);
+
 print_help() if ($h || $help);
+if ($v) { print GREEN, "proto_from_to ", CYAN, "$version\n\n", RESET; exit;} ;
 
+my $filter ='';
+if (! $rsync_opt) {
+    $rsync_opt = '-avh --delete --info=progress1 ';
+    $filter = ' -f"- */" -f"+ *" ';
+};
 
 # Config file path
 my $config_file = "$ENV{HOME}/.proto_from_to.conf";
@@ -79,7 +88,7 @@ print MAGENTA, "[DEBUG] \$remote_user = $remote_user\n", RESET if ($debug);
 my $quoted_remote_path = sh_quote("$remote_path/"); # for bash quoted and escaped
 print MAGENTA, "[DEBUG] \$quoted_remote_path = $quoted_remote_path\n", RESET if ($debug);
 
-check_remote_path($remote_host, $remote_path, $quoted_remote_path) ;
+check_remote_path($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path) ;
 show_summary();
 
 
@@ -117,18 +126,18 @@ if (@ARGV) {
 # if there are no arguments then we synchronize the current folder
 else {
     if (! ($r || $recursive)) {
-        $rsync_opt='-avh -f"- */" -f"+ *"';
+        $rsync_opt .= $filter;
         }
     if ($direction eq "to") {
-            $dest_rsync="$quoted_remote_host:$quoted_remote_path" ;
+            $dest_rsync="$remote_host:$remote_path\/" ;
             print MAGENTA, "[DEBUG] \$dest_rsync = $dest_rsync\n", RESET if ($debug);
-            push(@src_rsync, "$quoted_local_path");
+            push(@src_rsync, "$local_path\/");
             print MAGENTA, "[DEBUG] \@src_rsync = @src_rsync\n", RESET if ($debug);
     }
     elsif ($direction eq "from") {
-            $dest_rsync= "$quoted_local_path";
+            $dest_rsync= "$local_path\/";
             print MAGENTA, "[DEBUG] \$dest_rsync = $dest_rsync\n", RESET if ($debug);
-            push(@src_rsync, "$quoted_remote_host:$quoted_remote_path");
+            push(@src_rsync, "$remote_host:$remote_path\/");
             print MAGENTA, "[DEBUG] \@src_rsync = @src_rsync\n", RESET if ($debug);
     }
     else {
@@ -228,7 +237,7 @@ sub apply_path_mapping {
             warn MAGENTA, "[DEBUG] Warning: remote_prefix contains local_prefix ($local_prefix)", RESET, "\n" if ($debug);
         }
         
-        # Replace all occurrences
+        # Replace first occurrence
         $local_path =~ s/\Q$local_prefix\E/$remote_prefix/;
     }
     
@@ -253,24 +262,21 @@ sub load_ini_config {
             print MAGENTA, "\n[DEBUG] reading host = $current_host\n", RESET, if ($debug);
             $current_profile = undef;
             $config{$current_host} = { profiles => {} };
-        }
-        elsif (/^\s*\[\s*([^:]+):(.+?)\s*\]\s*$/) {  # Section  [host:profile]
+        } elsif (/^\s*\[\s*([^:]+):(.+?)\s*\]\s*$/) {  # Section  [host:profile]
             $current_host = $1;
             $current_profile = $2;
             print MAGENTA, "[DEBUG] reading profile = $current_host:$current_profile\n", RESET, if ($debug);    
  
-        }
-        elsif (/^\s*([^=]+?)\s*=\s*(.+?)\s*$/) {
-            my ($key, $value) = ($1, $2);
+        } elsif (/^\s*([^=]+?)\s*=\s*(.+?)\s*$/) {
+            my ($key, $versionalue) = ($1, $2);
 
             if ($key eq 'profiles') {
-                $config{$current_host}{profiles_order} = [split /\s*,\s*/, $value];
+                $config{$current_host}{profiles_order} = [split /\s*,\s*/, $versionalue];
                   print MAGENTA, "[DEBUG] reading host\'s profiles: " ,
                         join(", ", @{$config{$current_host}{profiles_order}}), "\n", RESET if ($debug);  ###
-            }
-            elsif ($key eq 'path_mappings') {
+            } elsif ($key eq 'path_mappings') {
                 # Split the path_mapping line into separate mappings
-                my @mappings = split /\s*,\s*/, $value;
+                my @mappings = split /\s*,\s*/, $versionalue;
                 print MAGENTA, "[DEBUG] reading mappings = @mappings\n", RESET, if ($debug);
                 my @path_mappings;
 
@@ -287,12 +293,11 @@ sub load_ini_config {
                 } else {
                     $config{$current_host}{path_mappings} = \@path_mappings;
                 }
-            }
-            else {
+            } else {
                 if ($current_profile) {
-                    $config{$current_host}{profiles}{$current_profile}{$key} = $value;
+                    $config{$current_host}{profiles}{$current_profile}{$key} = $versionalue;
                 } else {
-                    $config{$current_host}{$key} = $value;
+                    $config{$current_host}{$key} = $versionalue;
                 }
             }
         }
@@ -344,7 +349,7 @@ sub parse_ARGV {
 
 # To escape special characters
 sub sh_quote {
-    my ($str) = @_;
+    my $str = shift;
     my ($lq, $content, $rq) = $str =~ /(^'?)(.*?)('?$)/;
     if ($lq) { $lq =~ s/'/\\''/; } else { $lq ="'" };
     if ($rq) { $rq =~ s/'/'\\'/; } else { $rq ="'" };
@@ -354,60 +359,74 @@ sub sh_quote {
 }
 
 
-#   check_remote_path($remote_host, $remote_path, $quoted_remote_path) ;
+#   check_remote_path($quoted_remote_host,$remote_host, $remote_path, $quoted_remote_path) ;
 sub check_remote_path {
 
     print MAGENTA, "[DEBUG] ssh $remote_host \"test -d $quoted_remote_path && echo exists\"\n", RESET if ($debug);
-    if (`ssh $remote_host "test -d $quoted_remote_path && echo exists"`) {
+    if (`ssh $quoted_remote_host "test -d $quoted_remote_path && echo exists"`) {
         print GREEN, "\n[exists] ", CYAN, "$remote_host:$remote_path \n", RESET;
-    }
-    else {
-        die RED, "$remote_host: $remote_path doesn't exist! \n" if ($direction eq "from");
+    } else {
+        die RED, "$remote_host: $remote_path doesn't exist and cannot be \'from\'!", RESET, " \n" if ($direction eq "from");
         print RED, "[Doesn't exist!] ", CYAN, "$remote_host:$remote_path \n",
             GREEN, "Press Enter to create the directory\n", RESET;
-        my $cmd = "ssh $remote_host \"mkdir -p $quoted_remote_path\"";
+        my $cmd = "ssh $quoted_remote_host \"mkdir -p $quoted_remote_path\"";
         print MAGENTA, "[DEBUG] $cmd\n", RESET if ($debug);
         <STDIN> if (! $y);
-        system($cmd) == 0 or die RED, "Failed to create remote directory";
-        check_remote_path($remote_host, $remote_path, $quoted_remote_path) ; 
+        system($cmd) == 0 or die RED, "Failed to create remote directory", RESET, "\n";
+        check_remote_path($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path) ; 
     }
 }
 
 
-# is_remote_path_exists($remote_host, $dest_name_qe, $dest_name)
 sub is_remote_path_exists {
-    if (`ssh $remote_host "test -e $dest_name_qe && echo exists"`) {
-        print RED, "File/dir exists", CYAN, ": $remote_host:$dest_name \n", RESET;
-        return 1;
+    my ($quoted_remote_host, @paths) = @_;
+    my $cmd = "ssh $quoted_remote_host \"";
+    foreach my $path (@paths) {
+        $cmd .= "test -e $path && echo EXISTS:$path || echo MISSING:$path; ";
     }
+    $cmd .= "\"";
+    
+    print MAGENTA, "[DEBUG] $cmd\n", RESET if ($debug); 
+    my %results;
+    foreach my $line (`$cmd`) {
+        chomp $line;
+        my ($status, $path) = split(':', $line, 2);
+        $results{$path} = ($status eq 'EXISTS');
+    }
+    return \%results;
 }
+
 
 #   sync_to_remote(@$Files, @$Folders) 
 sub sync_to_remote {
 
-    $dest_rsync="$quoted_remote_host:$quoted_remote_path" ;
+    $dest_rsync="$remote_host:$remote_path\/" ;
     print MAGENTA, "[DEBUG] \$dest_rsync = $dest_rsync\n", RESET if ($debug);
 
     my $exist_warning = 0;
     foreach (@_) {
-        $escaped_name = sh_quote($_);
-        print MAGENTA, "[DEBUG] \$escaped_name = $escaped_name \n", RESET if ($debug);
+#        $escaped_name = sh_quote($_);
+#        print MAGENTA, "[DEBUG] \$escaped_name = $escaped_name \n", RESET if ($debug);
         $dest_name = "$remote_path/$_";
         print MAGENTA, "[DEBUG] \$dest_name = $dest_name\n", RESET if ($debug);
-        $dest_name_qe =  sh_quote($dest_name);
-        print MAGENTA, "[DEBUG] \$dest_name_qe = $dest_name_qe\n", RESET if ($debug);
-        
-        $exist_warning ||=  is_remote_path_exists($remote_host, $dest_name_qe, $dest_name) ;
-
-        push(@src_rsync, "$escaped_name");
+        push (@dest_name_qe, sh_quote($dest_name));
+        print MAGENTA, "[DEBUG] \@dest_name_qe =", join(', ', @dest_name_qe), "\n", RESET if ($debug);
+#        push(@src_rsync, "$escaped_name");
+        push(@src_rsync, "$_");
     }
 
-    if ($exist_warning) {
+    my $results = is_remote_path_exists($quoted_remote_host, @dest_name_qe) ;
+
+#    pp $results;
+
+    if ($results) {
+        foreach (keys %{$results}) {
+            print RED, "File/dir exists", CYAN, ": $_ \n", RESET if ($results->{$_});
+        }
         print YELLOW, "Continuing the process may lead to the file/dir being replaced! \n", RESET unless ($y);
-    }
+    };
 
     print MAGENTA, "[DEBUG] \@src_rsync = @src_rsync\n", RESET if ($debug);
-    print MAGENTA, "[DEBUG] \$rsync_opt = $rsync_opt\n", RESET if ($debug);
     rsync_sync(@src_rsync, $dest_rsync) ;
 }
 
@@ -415,34 +434,38 @@ sub sync_to_remote {
 #   rsync_sync($src_rsync, $dest_rsync) ;
 sub rsync_sync {
 
-        my $dry_run_command = "$rsync_x $rsync_opt --delete --info=progress1 --dry-run @src_rsync $dest_rsync" ;
-        my $command = "$rsync_x $rsync_opt --delete --info=progress1 @src_rsync $dest_rsync";
-        print MAGENTA, "[DEBUG] $command\n", RESET if ($debug);
+    my @rsync_opt_qe = shellwords($rsync_opt); 
+    print MAGENTA, "[DEBUG] \@rsync options: ", join(', ', @rsync_opt_qe), "\n", RESET if ($debug);
 
-        my $out = `$dry_run_command | grep deleting`;
-        my @strs = split $/,$out; # The default variable $/ contains the line feed signature
-        while(my $s = shift @strs) {
-            $s =~ s/^deleting\ //;
-            if ($direction eq "to") {
+    my @dry_run_command = ($rsync_x, @rsync_opt_qe, '--dry-run', '--', @src_rsync, $dest_rsync);
+    my @command = ($rsync_x, @rsync_opt_qe, '--', @src_rsync, $dest_rsync);
+    print MAGENTA, "[DEBUG] @command\n", RESET if ($debug);
+
+    open( my $out, "-|", @dry_run_command ) or die RED, "Error: $!", RESET, "\n";
+        while (<$out>) { 
+ #       my @strs = split $/,$_; # The default variable $/ contains the line feed signature
+ #       while(my $s = shift @strs) {
+            if (($_ =~ s/^deleting\ //) and ($direction eq "to")) {
                 print RED, "Will be deleted", CYAN, ": ",
-                    GREEN, "[$remote_host] ", CYAN, "\./$s \n", RESET;
-            }               
-            else {
+                    GREEN, "[$remote_host] ", CYAN, "\./$_ \n", RESET;
+            } elsif (($_ =~ s/^deleting\ //) and ($direction eq "from")) {
                 print RED, "Will be deleted", CYAN, ": ",
-                    GREEN, "[localhost] ", CYAN, "\./$s \n", RESET;
+                    GREEN, "[localhost] ", CYAN, "\./$_ \n", RESET;
             }
-        }
+    }
 
-        print YELLOW, "\nPress Enter to Synchronization\n", RESET unless ( $y || $yes );
-        <STDIN> unless ( $y || $yes );
-        system $command ;
+    print YELLOW, "\nPress Enter to Synchronization\n", RESET unless ( $y || $yes );
+    <STDIN> unless ( $y || $yes );
+    system (@command) == 0  or die RED, "System `@command` failed!", RESET, "\n";
 }
 
 
 sub print_help {
 
     print "
-Usage: to_<host>|from_<host> [options] [files/dirs]
+proto_from_to $version
+
+  Usage: to_<host>|from_<host> [options] [files/dirs]
 
 SYNOPSIS:
   to_<host>   [options] [file1 ...]  # Sync TO remote host 
@@ -453,20 +476,26 @@ BASIC OPERATION:
   With file/dir args:   Sync TO only specified items (must be in current
                         dir)
 OPTIONS:
+  -h, -help          Show this help message
+  -r, -recursive     Sync directories recursively
+  -y, -yes           Skip confirmation prompts
   -u=NAME            Use specific profile from config (if exists) or use
                      for remote login \"NAME\"
-  -y, -yes           Skip confirmation prompts
-  -r, -recursive     Sync directories recursively 
-  -h, -help          Show this help message
+  -rsync_opt         Options for rsync, 
+                        defaults if no [files/dirs] and no '-r':
+                            -rsync_opt='-avh -f\"- */\" -f\"+ *\" --delete --info=progress1'
+                        defaults if [files/dirs] or '-r':
+                            -rsync_opt='-avh --delete --info=progress1'
   -debug             Enable debug output
   -nocolor           Disable color output
   -print_config      Show example config
 
-Synchronize files/directories between local and remote hosts using rsync.
-Hostname and direction is extracted from script name. 
+DESCRIPTION:
+  Synchronize files/directories between local and remote hosts using rsync.
+  Hostname and direction is extracted from script name. 
     (e.g. 'to_hostname' → sync TO host 'hostname')
-Directory tree is preserved. if the config exists, then the profile
-\"default\" or the first profile will be used.
+  Directory tree is preserved. if the config exists, then the profile
+  \"default\" or the first profile will be used.
 
 EXAMPLES:
   1. Sync current dir to remote server1:
@@ -506,7 +535,7 @@ The config is something like this in file
 profiles = default, backup
 
 [server1:default]
-path_mapping = :
+path_mapping = /home/user1:/home/user2 
 
 [server1:backup]
 user = backup
