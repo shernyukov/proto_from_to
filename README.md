@@ -71,12 +71,14 @@ path_mapping = /home:/backup/home , /opt:/backup/opt
 ## Options
 | Flag           | Description                          |
 |----------------|--------------------------------------|
+| `-h`           | Show help message                    |
 | `-u=PROFILE`   | Use specific config profile          |
 | `-y`           | Skip confirmation prompts            |
 | `-r`           | Recursive sync                       |
 | `-debug`       | Enable debug output                  |
 | `-nocolor`     | Disable colored output               |
 | `-print_config`| Show example config                  |
+| `-rsync_opt`   | Options for rsync                    |
 
 
 ---
