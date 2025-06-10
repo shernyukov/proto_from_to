@@ -2,12 +2,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts.<br/>
-Uses the current directory as a reference point for synchronization and for simplicity and convenience, the hostname and direction are extracted from the script name (or symbolic link name).<br/>
+Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts.
+Uses the current directory as a reference point for synchronization and for simplicity and convenience, the hostname and direction are extracted from the script name (or symbolic link name).
 If path mappings are not specified, the directory on the host will be on the same path as on local.<br/>
     e.g.<br/>
-    'to_hostname [files/dirs]' → sync TO host 'hostname' current directory or only files/dirs in the current directory<br/>
-    'from_hostname' → sync FROM host 'hostname' current directory<br/>
+     ``` to_hostname [files/dirs] ``` → sync TO host 'hostname' current directory or only files/dirs in the current directory<br/>
+     ``` from_hostname ``` → sync FROM host 'hostname' current directory<br/>
 
 Features:<br/>
 ✓ Preserves directory structure<br/>
@@ -59,10 +59,10 @@ path_mapping = /home:/backup/home , /opt:/backup/opt
 
 ## Usage
   ```bash
-  # Sync current recursively dir TO server1 (using default profile)
+  # Sync current recursively dir TO servername (using default profile)
   to_servername -r
 
-  # Sync specific files/folders TO server1 (profile 'backup')
+  # Sync specific files/folders TO servername (profile 'backup')
   to_servername -u=backup file1.txt dir/
 
   # Sync recursively FROM server1
