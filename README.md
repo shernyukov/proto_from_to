@@ -59,13 +59,13 @@ path_mapping = /home:/backup/home , /opt:/backup/opt
 
 ## Usage
   ```bash
-  # Sync current recursively dir TO servername (using default profile)
+  # Sync current dir TO servername recursively (using the default profile if there is one)
   to_servername -r
 
   # Sync specific files/folders TO servername (profile 'backup')
   to_servername -u=backup file1.txt dir/
 
-  # Sync recursively FROM server1
+  # Sync FROM servername recursively
   from_servername -r
 
   # Skip confirmations
