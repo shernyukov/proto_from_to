@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts.
+Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts. The script is suitable for manual mirroring with one command.
 Uses the current directory as a reference point for synchronization and for simplicity and convenience, the hostname and direction are extracted from the script name (or symbolic link name).
 If path mappings are not specified, the directory on the host will be on the same path as on local.<br/>
     e.g.<br/>
