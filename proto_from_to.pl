@@ -1,17 +1,17 @@
 #!/usr/bin/env -S perl -ws
 #
-my $version = 'v2.1.2, 2025-05-15';
+my $version = 'v2.2.5, 2025-06-10';
 # proto_from_to 
 # The simple script to synchronize identical folders between hosts.
 # Author: Andrey Shernyukov
 # andreysh@nioch.nsc.ru
 #
 # TODO:
-#  [] use strict;
 #  [] use Getopt::
 #  [] allow direction "from" with args
 #
 
+use strict;
 use Cwd;
 use Cwd 'realpath';
 use File::Basename;
@@ -29,7 +29,23 @@ die RED, "\nError: ", RESET, "No $rsync_x executable\n\n" unless -x $rsync_x;
 
 our ($h,$help,$u,$debug,$y,$yes,$r,$recursive,$nocolor,$print_config, $rsync_opt, $v);
 
-print_help() if ($h || $help);
+########################################################################
+#                         Comfort                                       
+
+# No color output trigger
+if (exists($ENV{CLICOLOR}) && $ENV{CLICOLOR} == 0) {
+    $ENV{ANSI_COLORS_DISABLED} = 1 if (!$ENV{CLICOLOR_FORCE});
+}
+$ENV{ANSI_COLORS_DISABLED} = 1 if ($nocolor);
+
+# ctrl+c handler
+$SIG{INT} = sub { die RED,"\nExecution stopped! Aborted by user", RESET,
+                    "\n\n"; };
+
+########################################################################
+#                         Help                                       
+
+print_help($version) if ($h || $help);
 if ($v) { print GREEN, "proto_from_to ", CYAN, "$version\n\n", RESET; exit;} ;
 
 my $filter ='';
@@ -40,22 +56,7 @@ if (! $rsync_opt) {
 
 # Config file path
 my $config_file = "$ENV{HOME}/.proto_from_to.conf";
-print_config() if ($print_config);
-
-########################################################################
-#                         Comfort                                       
-
-
-# No color output trigger
-if (exists($ENV{CLICOLOR}) && $ENV{CLICOLOR} == 0) {
-    $ENV{ANSI_COLORS_DISABLED} = 1 if (!$ENV{CLICOLOR_FORCE});
-}
-$ENV{ANSI_COLORS_DISABLED} = 1 if ($nocolor);
-
-# ctrl+c handler
-$SIG{INT} = sub { die RED,"\nExecution stopped! Aborted by user", RESET,
-                    "\n"; };
-
+print_config($config_file) if ($print_config);
 
 ########################################################################
 #                         Main logic                                   
@@ -80,7 +81,7 @@ print MAGENTA, "[DEBUG] \$quoted_local_path = $quoted_local_path\n", RESET if ($
 
 my ($remote_path, $remote_user) = resolve_remote_path($config_file, $u, $local_path, $remote_host);
 $remote_host="$remote_user$remote_host";
-$quoted_remote_host = sh_quote($remote_host); 
+my $quoted_remote_host = sh_quote($remote_host); 
 
 print MAGENTA, "[DEBUG] \$remote_path = $remote_path\n", RESET if ($debug);
 print MAGENTA, "[DEBUG] \$remote_user = $remote_user\n", RESET if ($debug);
@@ -89,7 +90,7 @@ my $quoted_remote_path = sh_quote("$remote_path/"); # for bash quoted and escape
 print MAGENTA, "[DEBUG] \$quoted_remote_path = $quoted_remote_path\n", RESET if ($debug);
 
 check_remote_path($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path) ;
-show_summary();
+show_summary($direction, $remote_host, $local_path, $remote_path);
 
 
 if (@ARGV) {
@@ -117,7 +118,7 @@ if (@ARGV) {
             exit();
         }
 
-        sync_to_remote(@$Files, @$Folders) if ( @$Files || @$Folders );
+        sync_to_remote($remote_host, $remote_path, @$Files, @$Folders) if ( @$Files || @$Folders );
     }
     else {
         die RED, "Only \"to\" transfer direction is allowed for arguments!", RESET, "\n";
@@ -125,6 +126,9 @@ if (@ARGV) {
 }
 # if there are no arguments then we synchronize the current folder
 else {
+    my @src_rsync;
+    my $dest_rsync;
+    
     if (! ($r || $recursive)) {
         $rsync_opt .= $filter;
         }
@@ -145,7 +149,7 @@ else {
     }
 
     print MAGENTA, "[DEBUG] \$rsync_opt = $rsync_opt\n", RESET if ($debug);
-    rsync_sync(@src_rsync, $dest_rsync) ;
+    rsync_sync(\@src_rsync, $dest_rsync) ;
 }
 
 
@@ -153,8 +157,7 @@ else {
 #                            Sub's                                     
 
 sub parse_script_name {
-
-    my ($script) = @_;
+    my $script = shift;
     $script =~ m{([^/]+)$};
     my $name = $1 || $0;
     
@@ -166,7 +169,7 @@ sub parse_script_name {
 
 # resolve remote path if config exist
 sub resolve_remote_path {
-
+    my ($config_file, $u, $local_path, $remote_host) = @_;
     if (($u) and ($u eq 1)) { die RED, "User is specified via -u=<User>!", RESET, "\n";}; #TODO use Getopt::
 
     my $remote_path;
@@ -309,7 +312,7 @@ sub load_ini_config {
 
 
 sub show_summary {
-
+    my ($direction, $remote_host, $local_path, $remote_path) = @_;
     print GREEN, "\nSynchronization Summary:\n", RESET;
     print CYAN, sprintf("%-15s: %s\n", 'Direction',   $direction), RESET;
     print CYAN, sprintf("%-15s: %s\n", 'Remote Host', "$remote_host"), RESET;
@@ -334,7 +337,7 @@ sub parse_ARGV {
             dirname(realpath($_))," for $_ \n", RESET if ($debug);
         if ( $local_path eq dirname(realpath($_)) ) {
             if ( -d $_) {
-                ($folder = $_) =~ s/\/$// ; # remove trailing slash
+                (my $folder = $_) =~ s/\/$// ; # remove trailing slash
                 push(@Folders, $folder);
             } elsif ( -f $_) {
                 push(@Files, $_);
@@ -359,21 +362,32 @@ sub sh_quote {
 }
 
 
-#   check_remote_path($quoted_remote_host,$remote_host, $remote_path, $quoted_remote_path) ;
 sub check_remote_path {
-
-    print MAGENTA, "[DEBUG] ssh $remote_host \"test -d $quoted_remote_path && echo exists\"\n", RESET if ($debug);
-    if (`ssh $quoted_remote_host "test -d $quoted_remote_path && echo exists"`) {
+    #check ssh connection and check for possible errors before synchronization by testing the path
+    my ($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path) = @_;
+    my $ssh_check_cmd = "ssh $quoted_remote_host \"test -d $quoted_remote_path && echo EXISTS $quoted_remote_path || echo MISSING $quoted_remote_path\" 2>&1 ";
+    print MAGENTA, "[DEBUG] $ssh_check_cmd \n", RESET if ($debug);
+    my $check_output = `$ssh_check_cmd`;
+    print MAGENTA, "[DEBUG] $check_output", RESET if ($debug);
+    my $ssh_exit_status = $? >> 8;
+    print MAGENTA, "[DEBUG] ssh_exit_status $ssh_exit_status \n", RESET if ($debug);
+    if ($ssh_exit_status == 0 && $check_output =~ /EXISTS/) {
         print GREEN, "\n[exists] ", CYAN, "$remote_host:$remote_path \n", RESET;
-    } else {
-        die RED, "$remote_host: $remote_path doesn't exist and cannot be \'from\'!", RESET, " \n" if ($direction eq "from");
+    } 
+    elsif ($ssh_exit_status != 0) {
+        die RED, "SSH check failed for $remote_host:\n$check_output", RESET, "\n";
+    }
+    else {
+        die RED, "$remote_host: $remote_path doesn't exist and cannot be 'from'!", RESET, " \n" if ($direction eq "from");
         print RED, "[Doesn't exist!] ", CYAN, "$remote_host:$remote_path \n",
             GREEN, "Press Enter to create the directory\n", RESET;
         my $cmd = "ssh $quoted_remote_host \"mkdir -p $quoted_remote_path\"";
         print MAGENTA, "[DEBUG] $cmd\n", RESET if ($debug);
-        <STDIN> if (! $y);
-        system($cmd) == 0 or die RED, "Failed to create remote directory", RESET, "\n";
-        check_remote_path($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path) ; 
+        <STDIN> if (!$y);
+        
+        system($cmd) == 0 or die RED, "Failed to create remote directory: $!", RESET, "\n";
+        # Recheck
+        check_remote_path($quoted_remote_host, $remote_host, $remote_path, $quoted_remote_path);
     }
 }
 
@@ -397,85 +411,85 @@ sub is_remote_path_exists {
 }
 
 
-#   sync_to_remote(@$Files, @$Folders) 
 sub sync_to_remote {
-
-    $dest_rsync="$remote_host:$remote_path\/" ;
+    my ($remote_host, $remote_path, @items) = @_;
+    my $dest_rsync="$remote_host:$remote_path\/" ;
     print MAGENTA, "[DEBUG] \$dest_rsync = $dest_rsync\n", RESET if ($debug);
-
+    my @dest_name_qe;
+    my @src_rsync;
     my $exist_warning = 0;
-    foreach (@_) {
-#        $escaped_name = sh_quote($_);
-#        print MAGENTA, "[DEBUG] \$escaped_name = $escaped_name \n", RESET if ($debug);
-        $dest_name = "$remote_path/$_";
+    foreach (@items) {
+        my $dest_name = "$remote_path/$_";
         print MAGENTA, "[DEBUG] \$dest_name = $dest_name\n", RESET if ($debug);
         push (@dest_name_qe, sh_quote($dest_name));
         print MAGENTA, "[DEBUG] \@dest_name_qe =", join(', ', @dest_name_qe), "\n", RESET if ($debug);
-#        push(@src_rsync, "$escaped_name");
         push(@src_rsync, "$_");
     }
 
     my $results = is_remote_path_exists($quoted_remote_host, @dest_name_qe) ;
 
-#    pp $results;
-
-    if ($results) {
+    #pp $results;
+    my $triger = 0;
+    if (%$results) {
         foreach (keys %{$results}) {
-            print RED, "File/dir exists", CYAN, ": $_ \n", RESET if ($results->{$_});
+            if ($results->{$_}) {
+                print RED, "File/dir exists", CYAN, ": ", m{([^/]+)$}, "\n", RESET ;
+                $triger = 1;
+            }
         }
-        print YELLOW, "Continuing the process may lead to the file/dir being replaced! \n", RESET unless ($y);
+        print YELLOW, "Continuing the process may lead to the file/dir being replaced! \n", RESET unless (($y) or ! ($triger));
     };
 
     print MAGENTA, "[DEBUG] \@src_rsync = @src_rsync\n", RESET if ($debug);
-    rsync_sync(@src_rsync, $dest_rsync) ;
+    rsync_sync(\@src_rsync, $dest_rsync) ;
 }
 
 
-#   rsync_sync($src_rsync, $dest_rsync) ;
+
 sub rsync_sync {
-
+    my ($src_rsync, $dest_rsync) = @_;
     my @rsync_opt_qe = shellwords($rsync_opt); 
-    print MAGENTA, "[DEBUG] \@rsync options: ", join(', ', @rsync_opt_qe), "\n", RESET if ($debug);
+    print MAGENTA, "[DEBUG] \@rsync_options: ", join(', ', @rsync_opt_qe), "\n", RESET if ($debug);
 
-    my @dry_run_command = ($rsync_x, @rsync_opt_qe, '--dry-run', '--', @src_rsync, $dest_rsync);
-    my @command = ($rsync_x, @rsync_opt_qe, '--', @src_rsync, $dest_rsync);
+    my @dry_run_command = ($rsync_x, @rsync_opt_qe, '--dry-run', '--', @$src_rsync, $dest_rsync);
+    my @command = ($rsync_x, @rsync_opt_qe, '--', @$src_rsync, $dest_rsync);
     print MAGENTA, "[DEBUG] @command\n", RESET if ($debug);
 
     open( my $out, "-|", @dry_run_command ) or die RED, "Error: $!", RESET, "\n";
         while (<$out>) { 
- #       my @strs = split $/,$_; # The default variable $/ contains the line feed signature
- #       while(my $s = shift @strs) {
-            if (($_ =~ s/^deleting\ //) and ($direction eq "to")) {
+            if ($_ =~ s/^deleting\ //) {
                 print RED, "Will be deleted", CYAN, ": ",
-                    GREEN, "[$remote_host] ", CYAN, "\./$_ \n", RESET;
-            } elsif (($_ =~ s/^deleting\ //) and ($direction eq "from")) {
+                    GREEN, "[$remote_host] ", CYAN, "\./$_", RESET if ($direction eq "to");
                 print RED, "Will be deleted", CYAN, ": ",
-                    GREEN, "[localhost] ", CYAN, "\./$_ \n", RESET;
+                    GREEN, "[localhost] ", CYAN, "\./$_", RESET if ($direction eq "from");
             }
-    }
-
+        }
+    close $out;
+    
     print YELLOW, "\nPress Enter to Synchronization\n", RESET unless ( $y || $yes );
     <STDIN> unless ( $y || $yes );
+    print CYAN;
     system (@command) == 0  or die RED, "System `@command` failed!", RESET, "\n";
+    print RESET, "\n";
 }
 
 
 sub print_help {
+    my $version = shift; 
+    print GREEN, "
+proto_from_to ", CYAN, $version, GREEN, "
 
-    print "
-proto_from_to $version
+  Usage: ", CYAN, "to_<host>|from_<host> [options] [files/dirs]", GREEN, "
 
-  Usage: to_<host>|from_<host> [options] [files/dirs]
-
-SYNOPSIS:
-  to_<host>   [options] [file1 ...]  # Sync TO remote host 
+SYNOPSIS:", CYAN, "
+  to_<host>   [options] [file1 ...]  # Sync TO remote host", CYAN," 
   from_<host> [options]              # Sync FROM remote host
 
-BASIC OPERATION:
+", GREEN, "BASIC OPERATION:", CYAN, "
   Without arguments:    Sync current directory
   With file/dir args:   Sync TO only specified items (must be in current
                         dir)
-OPTIONS:
+", GREEN, "OPTIONS:", CYAN, "
   -h, -help          Show this help message
   -r, -recursive     Sync directories recursively
   -y, -yes           Skip confirmation prompts
@@ -490,14 +504,14 @@ OPTIONS:
   -nocolor           Disable color output
   -print_config      Show example config
 
-DESCRIPTION:
+", GREEN, "DESCRIPTION:", CYAN, "
   Synchronize files/directories between local and remote hosts using rsync.
   Hostname and direction is extracted from script name. 
     (e.g. 'to_hostname' → sync TO host 'hostname')
   Directory tree is preserved. if the config exists, then the profile
   \"default\" or the first profile will be used.
 
-EXAMPLES:
+", GREEN, "EXAMPLES:", CYAN, "
   1. Sync current dir to remote server1:
      to_server1
   
@@ -510,27 +524,27 @@ EXAMPLES:
   4. Force sync without confirmation:
      to_server1 -y important.txt backup/
 
-TIP: Create symlinks for hosts:
+", GREEN, "TIP: Create symlinks for hosts:", CYAN, "
   ln -s proto_from_to to_prod
   ln -s proto_from_to from_dev
 
   ln -s proto_from_to to_server1
   ln -s proto_from_to from_server1
 
-";
+", RESET;
     exit;
 }
 
 
 sub print_config {
-
-    print "
-The config is something like this in file
-\"$config_file\":
+    my $config_file = shift;
+    print GREEN, "
+The config is something like in INI-file
+\"", CYAN, $config_file, GREEN, "\":", CYAN, "
 
 # for user: $ENV{USER}\ on host: $ENV{HOSTNAME}  
 
-# server1 conf:
+# server1 conf: 
 [server1]
 profiles = default, backup
 
@@ -541,10 +555,10 @@ path_mapping = /home/user1:/home/user2
 user = backup
 path_mapping = /home:/backup/home , /opt:/backup/opt
 
-# server2 conf:
+# server2 conf:", GREEN,"
 ...
 
-";
+", RESET;
     exit;
 }
 
