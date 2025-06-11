@@ -22,11 +22,17 @@ Features:<br/>
    git clone https://github.com/shernyukov/proto_from_to.git
    cd proto_from_to
    ```
-2. Make executable:
+2. if necessary, change the path to rsync at the beginning of the script:
+   ```
+   ...
+   my $rsync_x = '/usr/bin/rsync';
+   ...
+   ```
+4. Make executable:
    ```bash
    chmod +x proto_from_to.pl
    ```
-3. Create symbolic links for your hosts in your executable directory:
+5. Create symbolic links for your hosts in your executable directory:
    ```bash
    ln -s proto_from_to.pl to_servername
    ln -s proto_from_to.pl from_servername
