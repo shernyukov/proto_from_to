@@ -5,9 +5,11 @@
 Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts. The script is suitable for fast mirroring with one command.
 Uses the current directory as a reference point for synchronization and for simplicity and convenience, the hostname and direction are extracted from the script name (or symbolic link name).
 If path mappings are not specified, the directory on the host will be on the same path as on local.<br/>
-    e.g.<br/>
+    e.g.<br/><br/>
      ``` to_hostname [files/dirs] ``` → sync TO host 'hostname' current directory or only files/dirs in the current directory<br/>
-     ``` from_hostname ``` → sync FROM host 'hostname' current directory<br/>
+     ``` from_hostname ```            → sync FROM host 'hostname' current directory<br/><br/>
+
+It is highly recommended to set up SSH key authentication.<br/>
 
 Features:<br/>
 ✓ Preserves directory structure<br/>
@@ -38,11 +40,11 @@ Features:<br/>
    ln -s proto_from_to.pl from_servername
    ```
 ## BASIC OPERATION:
-
-  Without arguments:&nbsp;&nbsp;&nbsp;&nbsp;Sync current directory<br>
-  With file/dir args:&nbsp;&nbsp;&nbsp;&nbsp;Sync _TO_ only specified items (must be in current
-                        dir)<br>
-
+  It is highly recommended to set up SSH key authentication.<br/>
+  <ul>
+      <li>Without arguments:&nbsp;&nbsp;&nbsp;&nbsp;Sync current directory TO remotehost or FROM remotehost<br>
+      <li>With file/dir args:&nbsp;&nbsp;&nbsp;&nbsp;Sync TO remotehost only specified items (must be in current dir)<br>
+  </ul>
 
 ## Configuration (optional)
 Edit `~/.proto_from_to.conf`:
