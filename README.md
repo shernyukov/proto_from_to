@@ -3,11 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Perl script for bidirectional rsync-based folders/files synchronization between Linux hosts. The script is suitable for fast mirroring with one command.
-Uses the current directory as a reference point for synchronization and for simplicity and convenience, the hostname and direction are extracted from the script name (or symbolic link name).
+Uses the current directory as a reference point for synchronization and for simplicity and convenience, the remotehostname and direction are extracted from the script name (or symbolic link name).
 If path mappings are not specified, the directory on the host will be on the same path as on local.<br/>
     e.g.<br/><br/>
-     ``` to_hostname [files/dirs] ``` → sync TO host 'hostname' current directory or only files/dirs in the current directory<br/>
-     ``` from_hostname ```            → sync FROM host 'hostname' current directory<br/><br/>
+     ``` to_remotehostname [files/dirs] ```   → sync TO host 'hostname' current directory or only files/dirs in the current directory<br/>
+     ``` from_remotehostname [files/dirs]```  → sync FROM host 'hostname' current directory or only files/dirs in the current directory<br/><br/>
 
 It is highly recommended to set up SSH key authentication.<br/>
 
@@ -16,7 +16,8 @@ Features:<br/>
 ✓ Simple INI-configuration (optional)<br/>
 ✓ Profile-based path mappings (optional)<br/>
 ✓ Progress synchronization<br/>
-✓ Minimal dependencies<br/>
+✓ Сhecks for presence and location in the current directory<br/>
+✓ Save history to a log file on both local and remote hosts<br/>
 
 ## Installation
 1. Clone the repo:
@@ -43,7 +44,7 @@ Features:<br/>
   It is highly recommended to set up SSH key authentication.<br/>
   <ul>
       <li>Without arguments:&nbsp;&nbsp;&nbsp;&nbsp;Sync current directory TO remotehost or FROM remotehost<br>
-      <li>With file/dir args:&nbsp;&nbsp;&nbsp;&nbsp;Sync TO remotehost only specified items (must be in current dir)<br>
+      <li>With file/dir args:&nbsp;&nbsp;&nbsp;&nbsp;Sync TO or FROM remotehost only specified items (must be in current dir)<br>
   </ul>
 
 ## Configuration (optional)
@@ -81,16 +82,17 @@ path_mapping = /home:/backup/home , /opt:/backup/opt
   ```
 
 ## Options
-| Flag           | Description                          |
-|----------------|--------------------------------------|
-| `-h`           | Show help message                    |
-| `-u=PROFILE`   | Use specific config profile          |
-| `-y`           | Skip confirmation prompts            |
-| `-r`           | Recursive sync                       |
-| `-debug`       | Enable debug output                  |
-| `-nocolor`     | Disable colored output               |
-| `-print_config`| Show example config                  |
-| `-rsync_opt`   | Options for rsync                    |
+| Flag            | Description                          |
+|-----------------|--------------------------------------|
+| `-h`            | Show help message                    |
+| `-u=PROFILE`    | Use specific config profile          |
+| `-y`            | Skip confirmation prompts            |
+| `-r`            | Recursive sync                       |
+| `-debug`        | Enable debug output                  |
+| `-nocolor`      | Disable colored output               |
+| `-print_config` | Show example config                  |
+| `-rsync_opt=opt`| Options for rsync                    |
+| `-l`            | List remote dir                      |
 
 
 ---
